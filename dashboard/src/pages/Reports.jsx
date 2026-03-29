@@ -29,11 +29,7 @@ function PieTooltip({ active, payload }) {
   );
 }
 
-const MONTHS = Array.from({ length: 6 }, (_, i) => {
-  const d = new Date();
-  d.setMonth(d.getMonth() - i);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-});
+const MONTHS = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
 
 export default function Reports() {
   const [month, setMonth] = useState(currentMonth());

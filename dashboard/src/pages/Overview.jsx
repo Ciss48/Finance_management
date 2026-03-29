@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
 import { getMonthlyStats, getDailyStats, getCategoryStats, getTransactions, deleteTransaction } from "../api";
 import { fmt, fmtShort, COLORS, currentMonth } from "../utils";
+
+const MONTHS = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
 
 function StatCard({ label, value, sub, color, icon }) {
   return (
@@ -42,7 +44,28 @@ function PieTooltip({ active, payload }) {
   );
 }
 
+const CustomBar = (props) => {
+  const { x, y, width, height, isToday } = props;
+  if (!height || height <= 0) return null;
+  const fill = isToday ? "var(--accent)" : "#4d6aaa";
+  const r = 4;
+  return (
+    <g>
+      {isToday && (
+        <rect x={x - 3} y={y - 5} width={width + 6} height={height + 5} rx={6}
+          fill="var(--accent)" opacity={0.18} />
+      )}
+      <rect x={x} y={y} width={width} height={height} rx={r} fill={fill} />
+      <rect x={x} y={y + height - r} width={width} height={r} fill={fill} />
+      {isToday && (
+        <rect x={x} y={y} width={width} height={2} rx={1} fill="#fff" opacity={0.3} />
+      )}
+    </g>
+  );
+};
+
 export default function Overview() {
+  const [month, setMonth] = useState(currentMonth);
   const [monthly, setMonthly] = useState(null);
   const [daily, setDaily] = useState([]);
   const [catStats, setCatStats] = useState(null);
@@ -57,7 +80,7 @@ export default function Overview() {
     try {
       setError(null);
       const [m, d, c, t] = await Promise.all([
-        getMonthlyStats(), getDailyStats(), getCategoryStats(), getTransactions({ limit: 30 }),
+        getMonthlyStats(month), getDailyStats(month), getCategoryStats(month), getTransactions({ limit: 30, month }),
       ]);
       setMonthly(m); setDaily(d); setCatStats(c); setTransactions(t);
     } catch {
@@ -65,7 +88,7 @@ export default function Overview() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -83,8 +106,11 @@ export default function Overview() {
     name: c.name, value: c.total, percentage: c.percentage, icon: c.icon, fill: COLORS[i % COLORS.length],
   }));
 
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayDate = currentMonth() === month ? new Date().toISOString().slice(0, 10) : null;
   const dailyChartData = daily.map((d) => ({ ...d, isToday: d.date === todayDate, label: d.date.slice(8, 10) }));
+
+  const totalExpense = (monthly?.total_fixed || 0) + (monthly?.total_expense || 0);
+  const hasData = daily.length > 0 || (catStats?.categories?.length > 0);
 
   return (
     <>
@@ -93,129 +119,177 @@ export default function Overview() {
           <h1 className="page-title">Tổng quan</h1>
           <p className="page-sub">{todayStr}</p>
         </div>
-        <button className="refresh-btn" onClick={load}>↻ Làm mới</button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <select className="filter-input" value={month} onChange={(e) => { setMonth(e.target.value); setLoading(true); }}>
+            {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <button className="refresh-btn" onClick={load}>↻ Làm mới</button>
+        </div>
       </header>
 
-      <div className="cards-grid">
-        <StatCard label="Hôm nay" value={fmt(monthly?.today_expense || 0)} icon="📅" color="var(--accent)" />
-        <StatCard label="Tuần này" value={fmt(monthly?.week_expense || 0)} icon="📆" color="#a78bfa" />
-        <StatCard label="Tháng này" value={fmt(monthly?.total_expense || 0)} sub={`Thu nhập: ${fmt(monthly?.total_income || 0)}`} icon="📊" color="var(--green)" />
-        <StatCard label="Chi phí cố định" value={fmt(monthly?.total_fixed || 0)} sub="Tiền nhà, gym, v.v." icon="🔒" color="var(--yellow)" />
-        <StatCard
-          label="Tổng chi"
-          value={fmt((monthly?.total_fixed || 0) + (monthly?.total_expense || 0))}
-          sub={`Cố định: ${fmt(monthly?.total_fixed || 0)}`}
-          icon="💸"
-          color="var(--red)"
-        />
-      </div>
-
-      <div className="charts-row">
-        <div className="card chart-card">
-          <div className="section-header"><h2>Chi tiêu theo ngày</h2></div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={dailyChartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={45} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="expense" name="Chi tiêu" radius={[4, 4, 0, 0]}>
-                {dailyChartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.isToday ? "var(--accent)" : "#4d6aaa"} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="card chart-card">
-          <div className="section-header"><h2>Theo danh mục</h2></div>
-          {pieData.length === 0 ? (
-            <div className="empty-state">Chưa có dữ liệu tháng này</div>
-          ) : (
-            <div className="pie-row">
-              <ResponsiveContainer width={180} height={180}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={2}>
-                    {pieData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip content={<PieTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="pie-legend">
-                {pieData.slice(0, 6).map((d, i) => (
-                  <div key={i} className="legend-item">
-                    <span className="legend-dot" style={{ background: d.fill }} />
-                    <span className="legend-name">{d.icon} {d.name}</span>
-                    <span className="legend-pct">{d.percentage}%</span>
-                  </div>
-                ))}
+      {/* Hero: Tổng chi */}
+      <div className="hero-kpi-wrap">
+        <div className="hero-stat-card">
+          <div className="hero-stat-icon">💸</div>
+          <div className="hero-stat-body">
+            <div className="hero-stat-label">Tổng chi — {month}</div>
+            <div className="hero-stat-value">{fmt(totalExpense)}</div>
+            <div className="hero-stat-breakdown">
+              <span className="breakdown-item">
+                <span className="breakdown-dot" style={{ background: "var(--accent)" }} />
+                Chi biến động: {fmt(monthly?.total_expense || 0)}
+              </span>
+              <span className="breakdown-item">
+                <span className="breakdown-dot" style={{ background: "var(--yellow)" }} />
+                Chi cố định: {fmt(monthly?.total_fixed || 0)}
+              </span>
+              {(monthly?.total_income || 0) > 0 && (
+                <span className="breakdown-item">
+                  <span className="breakdown-dot" style={{ background: "var(--green)" }} />
+                  Thu nhập: {fmt(monthly?.total_income || 0)}
+                </span>
+              )}
+            </div>
+          </div>
+          {(monthly?.total_income || 0) > 0 && (
+            <div className="hero-stat-balance">
+              <div className="hero-balance-label">Số dư</div>
+              <div className="hero-balance-value" style={{
+                color: (monthly.total_income - totalExpense) >= 0 ? "var(--green)" : "var(--red)"
+              }}>
+                {fmt(monthly.total_income - totalExpense)}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      <div className="bottom-row">
-        <div className="card txn-card">
-          <div className="section-header"><h2>Giao dịch gần đây</h2></div>
-          <div className="txn-list">
-            {transactions.length === 0 && <div className="empty-state">Chưa có giao dịch nào</div>}
-            {transactions.map((t) => (
-              <div key={t.id} className="txn-item">
-                <div className="txn-icon">{t.categories?.icon || "📦"}</div>
-                <div className="txn-info">
-                  <div className="txn-cat">{t.categories?.name || "Khác"}</div>
-                  {t.note && <div className="txn-note">{t.note}</div>}
-                  <div className="txn-time">{new Date(t.created_at).toLocaleString("vi-VN")}</div>
-                </div>
-                <div className={`txn-amount ${t.type === "income" ? "income" : "expense"}`}>
-                  {t.type === "income" ? "+" : "-"}{fmt(t.amount)}
-                </div>
-                <button className="txn-delete" onClick={() => handleDelete(t.id)} title="Xóa">×</button>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* 4 KPI cards */}
+      <div className="cards-grid-4">
+        <StatCard label="Hôm nay" value={fmt(monthly?.today_expense || 0)} icon="📅" color="var(--accent)" />
+        <StatCard label="Tuần này" value={fmt(monthly?.week_expense || 0)} icon="📆" color="#a78bfa" />
+        <StatCard label="Tháng này" value={fmt(monthly?.total_expense || 0)} sub={`Thu nhập: ${fmt(monthly?.total_income || 0)}`} icon="📊" color="var(--green)" />
+        <StatCard label="Chi phí cố định" value={fmt(monthly?.total_fixed || 0)} sub="Tiền nhà, gym, v.v." icon="🔒" color="var(--yellow)" />
+      </div>
 
-        <div className="card fixed-card">
-          <div className="section-header"><h2>Chi phí cố định tháng này</h2></div>
-          {(!monthly?.fixed_costs || monthly.fixed_costs.length === 0) ? (
-            <div className="empty-state">Chưa có chi phí cố định</div>
-          ) : (
-            <>
-              <div className="fixed-list">
-                {monthly.fixed_costs.map((fc, i) => (
-                  <div key={i} className="fixed-item">
-                    <span className="fixed-icon">{fc.categories?.icon || "🔒"}</span>
-                    <span className="fixed-name">{fc.categories?.name || "?"}</span>
-                    <span className="fixed-amount">{fmt(fc.amount)}</span>
+      {!hasData ? (
+        <div className="no-data-state">
+          <div className="no-data-icon">📭</div>
+          <div className="no-data-text">Không có dữ liệu cho tháng {month}</div>
+        </div>
+      ) : (
+        <>
+          <div className="charts-row">
+            <div className="card chart-card">
+              <div className="section-header"><h2>Chi tiêu theo ngày</h2></div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={dailyChartData} margin={{ top: 22, right: 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={45} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="expense" name="Chi tiêu" shape={<CustomBar />}>
+                    <LabelList
+                      dataKey="expense"
+                      position="top"
+                      formatter={(v) => v > 0 ? fmtShort(v) : ""}
+                      style={{ fill: "var(--text-muted)", fontSize: 10 }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="card chart-card">
+              <div className="section-header"><h2>Theo danh mục</h2></div>
+              {pieData.length === 0 ? (
+                <div className="empty-state">Chưa có dữ liệu tháng này</div>
+              ) : (
+                <div className="pie-row">
+                  <ResponsiveContainer width={180} height={180}>
+                    <PieChart>
+                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={2}>
+                        {pieData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                      </Pie>
+                      <Tooltip content={<PieTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pie-legend">
+                    {pieData.slice(0, 6).map((d, i) => (
+                      <div key={i} className="legend-item">
+                        <span className="legend-dot" style={{ background: d.fill }} />
+                        <span className="legend-name">{d.icon} {d.name}</span>
+                        <span className="legend-pct">{d.percentage}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bottom-row">
+            <div className="card txn-card">
+              <div className="section-header"><h2>Giao dịch gần đây</h2></div>
+              <div className="txn-list">
+                {transactions.length === 0 && <div className="empty-state">Chưa có giao dịch nào</div>}
+                {transactions.map((t) => (
+                  <div key={t.id} className="txn-item">
+                    <div className="txn-icon">{t.categories?.icon || "📦"}</div>
+                    <div className="txn-info">
+                      <div className="txn-cat">{t.categories?.name || "Khác"}</div>
+                      {t.note && <div className="txn-note">{t.note}</div>}
+                      <div className="txn-time">{new Date(t.created_at).toLocaleString("vi-VN")}</div>
+                    </div>
+                    <div className={`txn-amount ${t.type === "income" ? "income" : "expense"}`}>
+                      {t.type === "income" ? "+" : "-"}{fmt(t.amount)}
+                    </div>
+                    <button className="txn-delete" onClick={() => handleDelete(t.id)} title="Xóa">×</button>
                   </div>
                 ))}
               </div>
-              <div className="fixed-total">
-                <span>Tổng cố định</span>
-                <span className="fixed-total-val">{fmt(monthly.total_fixed)}</span>
-              </div>
-              <div className="fixed-bar-row">
-                <div className="fixed-bar-label">
-                  <span style={{ color: "var(--yellow)" }}>● Cố định</span>
-                  <span style={{ color: "var(--accent)" }}>● Biến động</span>
-                </div>
-                {(() => {
-                  const total = (monthly.total_fixed || 0) + (monthly.total_expense || 0);
-                  const fixedPct = total > 0 ? (monthly.total_fixed / total) * 100 : 0;
-                  return (
-                    <div className="split-bar">
-                      <div className="split-fixed" style={{ width: `${fixedPct}%` }} />
+            </div>
+
+            <div className="card fixed-card">
+              <div className="section-header"><h2>Chi phí cố định tháng này</h2></div>
+              {(!monthly?.fixed_costs || monthly.fixed_costs.length === 0) ? (
+                <div className="empty-state">Chưa có chi phí cố định</div>
+              ) : (
+                <>
+                  <div className="fixed-list">
+                    {monthly.fixed_costs.map((fc, i) => (
+                      <div key={i} className="fixed-item">
+                        <span className="fixed-icon">{fc.categories?.icon || "🔒"}</span>
+                        <span className="fixed-name">{fc.categories?.name || "?"}</span>
+                        <span className="fixed-amount">{fmt(fc.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="fixed-total">
+                    <span>Tổng cố định</span>
+                    <span className="fixed-total-val">{fmt(monthly.total_fixed)}</span>
+                  </div>
+                  <div className="fixed-bar-row">
+                    <div className="fixed-bar-label">
+                      <span style={{ color: "var(--yellow)" }}>● Cố định</span>
+                      <span style={{ color: "var(--accent)" }}>● Biến động</span>
                     </div>
-                  );
-                })()}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+                    {(() => {
+                      const total = (monthly.total_fixed || 0) + (monthly.total_expense || 0);
+                      const fixedPct = total > 0 ? (monthly.total_fixed / total) * 100 : 0;
+                      return (
+                        <div className="split-bar">
+                          <div className="split-fixed" style={{ width: `${fixedPct}%` }} />
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

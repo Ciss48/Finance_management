@@ -98,6 +98,12 @@
   gap: 14px;
   padding: 24px 32px;
 }
+.cards-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  padding: 14px 32px 0;
+}
 .cards-grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -276,6 +282,109 @@
   overflow: hidden; position: relative;
 }
 .split-fixed { height: 100%; background: var(--yellow); border-radius: 3px; }
+
+/* Hero KPI */
+.hero-kpi-wrap {
+  padding: 24px 32px 0;
+}
+.hero-stat-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px 28px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.hero-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--red);
+}
+.hero-stat-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at top left, rgba(239,68,68,0.06) 0%, transparent 55%);
+  pointer-events: none;
+}
+.hero-stat-icon {
+  font-size: 40px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 10px rgba(239,68,68,0.35));
+}
+.hero-stat-body { flex: 1; min-width: 0; }
+.hero-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 4px;
+}
+.hero-stat-value {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--red);
+  font-family: 'DM Mono', monospace;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 10px;
+}
+.hero-stat-breakdown {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.breakdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.breakdown-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.hero-stat-balance {
+  flex-shrink: 0;
+  text-align: right;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+.hero-balance-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.hero-balance-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: -0.5px;
+}
+
+/* No data state */
+.no-data-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 32px;
+  color: var(--text-muted);
+}
+.no-data-icon { font-size: 48px; opacity: 0.5; }
+.no-data-text { font-size: 15px; }
 
 /* Empty state */
 .empty-state {
