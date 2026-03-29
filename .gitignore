@@ -1,0 +1,14 @@
+venv/
+.env
+.env.local
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+node_modules/
+dist/
+dashboard/dist/
+*.egg-info/
+.vercel/
+.claude/
+.mcp.json
