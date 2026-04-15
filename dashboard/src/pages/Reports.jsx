@@ -65,6 +65,11 @@ export default function Reports() {
     : [];
   const dailyCategories = allDailyCategories.filter((k) => activeCategories.has(k));
 
+  const dailyWithTotal = daily.map((d) => ({
+    ...d,
+    __total__: dailyCategories.reduce((sum, k) => sum + (d[k] || 0), 0),
+  }));
+
   const pieData = (catStats?.categories || [])
     .filter((c) => activeCategories.has(c.name))
     .map((c, i) => ({
@@ -149,7 +154,7 @@ export default function Reports() {
               <div className="empty-state">Không có dữ liệu tháng này</div>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={daily} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <BarChart data={dailyWithTotal} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
@@ -158,6 +163,9 @@ export default function Reports() {
                   {dailyCategories.map((cat, i) => (
                     <Bar key={cat} dataKey={cat} stackId="a" fill={getCatColor(cat, i)} radius={i === dailyCategories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
                   ))}
+                  <Bar dataKey="__total__" stackId="a" fill="transparent" isAnimationActive={false} legendType="none">
+                    <LabelList dataKey="__total__" position="top" formatter={(v) => v > 0 ? fmtShort(v) : ""} style={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             )}

@@ -112,13 +112,17 @@ export default function YearlyReport() {
           <div className="card">
             <div className="section-header"><h2>Chi tiêu theo tháng — {year}</h2></div>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={monthlyChart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={monthlyChart} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="total" name="Tổng chi" fill="var(--red)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="income" name="Thu nhập" fill="var(--green)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total" name="Tổng chi" fill="var(--red)" radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey="total" position="top" formatter={(v) => v > 0 ? fmtShort(v) : ""} style={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                </Bar>
+                <Bar dataKey="income" name="Thu nhập" fill="var(--green)" radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey="income" position="top" formatter={(v) => v > 0 ? fmtShort(v) : ""} style={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -127,7 +131,7 @@ export default function YearlyReport() {
           <div className="card">
             <div className="section-header"><h2>Số dư theo tháng — {year}</h2></div>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={balanceChart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={balanceChart} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
@@ -137,6 +141,7 @@ export default function YearlyReport() {
                   {balanceChart.map((entry, i) => (
                     <Cell key={i} fill={entry.balance >= 0 ? "var(--green)" : "var(--red)"} />
                   ))}
+                  <LabelList dataKey="balance" position="top" formatter={(v) => v !== 0 ? (v > 0 ? "+" : "") + fmtShort(Math.abs(v)) : ""} style={{ fill: "var(--text-muted)", fontSize: 10 }} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
