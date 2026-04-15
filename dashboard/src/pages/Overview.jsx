@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
 } from "recharts";
-import { getMonthlyStats, getDailyStats, getCategoryStats, getTransactions, deleteTransaction } from "../api";
-import { fmt, fmtShort, COLORS, currentMonth } from "../utils";
+import { getMonthlyStats, getDailyStats, getDailyCategoryStats, getCategoryStats, getTransactions, deleteTransaction } from "../api";
+import { fmt, fmtShort, getCatColor, currentMonth } from "../utils";
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
 
@@ -66,12 +66,15 @@ const CustomBar = (props) => {
 
 export default function Overview() {
   const [month, setMonth] = useState(currentMonth);
+  const [budget, setBudget] = useState(0);
   const [monthly, setMonthly] = useState(null);
   const [daily, setDaily] = useState([]);
+  const [dailyByCat, setDailyByCat] = useState([]);
   const [catStats, setCatStats] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeCategories, setActiveCategories] = useState(new Set());
 
   const today = new Date();
   const todayStr = today.toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -79,10 +82,10 @@ export default function Overview() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const [m, d, c, t] = await Promise.all([
-        getMonthlyStats(month), getDailyStats(month), getCategoryStats(month), getTransactions({ limit: 30, month }),
+      const [m, d, dc, c, t] = await Promise.all([
+        getMonthlyStats(month), getDailyStats(month), getDailyCategoryStats(month), getCategoryStats(month), getTransactions({ limit: 30, month }),
       ]);
-      setMonthly(m); setDaily(d); setCatStats(c); setTransactions(t);
+      setMonthly(m); setDaily(d); setDailyByCat(dc); setCatStats(c); setTransactions(t);
     } catch {
       setError("Không thể kết nối API. Kiểm tra backend có đang chạy không.");
     } finally {
@@ -91,6 +94,25 @@ export default function Overview() {
   }, [month]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("budget_" + month);
+    setBudget(saved ? Number(saved) : 0);
+  }, [month]);
+
+  useEffect(() => {
+    if (catStats?.categories) {
+      setActiveCategories(new Set(catStats.categories.map((c) => c.name)));
+    }
+  }, [catStats]);
+
+  const toggleCategory = (name) => {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
   const handleDelete = async (id) => {
     if (!confirm("Xóa giao dịch này?")) return;
@@ -103,11 +125,18 @@ export default function Overview() {
   if (error) return <div className="full-center error-msg">{error}</div>;
 
   const pieData = (catStats?.categories || []).map((c, i) => ({
-    name: c.name, value: c.total, percentage: c.percentage, icon: c.icon, fill: COLORS[i % COLORS.length],
+    name: c.name, value: c.total, percentage: c.percentage, icon: c.icon, fill: getCatColor(c.name, i),
   }));
 
   const todayDate = currentMonth() === month ? new Date().toISOString().slice(0, 10) : null;
-  const dailyChartData = daily.map((d) => ({ ...d, isToday: d.date === todayDate, label: d.date.slice(8, 10) }));
+  const dailyChartData = (dailyByCat.length > 0 ? dailyByCat : daily).map((d) => {
+    const filteredExpense = dailyByCat.length > 0
+      ? Object.entries(d)
+          .filter(([k]) => k !== "date" && k !== "label" && activeCategories.has(k))
+          .reduce((sum, [, v]) => sum + v, 0)
+      : d.expense;
+    return { ...d, expense: filteredExpense, isToday: d.date === todayDate, label: d.date.slice(8, 10) };
+  });
 
   const totalExpense = (monthly?.total_fixed || 0) + (monthly?.total_expense || 0);
   const hasData = daily.length > 0 || (catStats?.categories?.length > 0);
@@ -126,6 +155,19 @@ export default function Overview() {
           <button className="refresh-btn" onClick={load}>↻ Làm mới</button>
         </div>
       </header>
+
+      <div style={{ padding: "0 32px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>💰 Ngân sách tháng:</span>
+        <input
+          type="number"
+          placeholder="Nhập ngân sách..."
+          value={budget || ""}
+          onChange={(e) => { const v = Number(e.target.value); setBudget(v); localStorage.setItem("budget_" + month, v); }}
+          className="filter-input"
+          style={{ width: 160 }}
+        />
+        <span style={{ color: "var(--text-muted)", fontSize: 13 }}>đ</span>
+      </div>
 
       {/* Hero: Tổng chi */}
       <div className="hero-kpi-wrap">
@@ -182,12 +224,37 @@ export default function Overview() {
           <div className="charts-row">
             <div className="card chart-card">
               <div className="section-header"><h2>Chi tiêu theo ngày</h2></div>
+              {(catStats?.categories || []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                  {catStats.categories.map((c) => {
+                    const active = activeCategories.has(c.name);
+                    return (
+                      <button
+                        key={c.name}
+                        onClick={() => toggleCategory(c.name)}
+                        style={{
+                          padding: "4px 10px", fontSize: 12, borderRadius: 999,
+                          border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                          background: "var(--card)", color: "var(--text-secondary)",
+                          cursor: "pointer", opacity: active ? 1 : 0.4,
+                          transition: "opacity 0.15s, border-color 0.15s",
+                        }}
+                      >
+                        {c.icon} {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={dailyChartData} margin={{ top: 22, right: 4, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={45} />
                   <Tooltip content={<CustomTooltip />} />
+                  {budget > 0 && (
+                    <ReferenceLine y={budget} stroke="var(--yellow)" strokeDasharray="4 4" label={{ value: fmtShort(budget) + "đ", position: "right", fill: "var(--yellow)", fontSize: 11 }} />
+                  )}
                   <Bar dataKey="expense" name="Chi tiêu" shape={<CustomBar />}>
                     <LabelList
                       dataKey="expense"

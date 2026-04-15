@@ -21,5 +21,8 @@ export const getDailyStats = (month) =>
 export const getCategoryStats = (month) =>
   api.get("/api/stats/by-category", { params: month ? { month } : {} }).then((r) => r.data);
 
+export const getDailyCategoryStats = (month) =>
+  api.get("/api/stats/daily-by-category", { params: month ? { month } : {} }).then((r) => r.data);
+
 export const getYearlyStats = (year) =>
   api.get("/api/stats/yearly", { params: year ? { year } : {} }).then((r) => r.data);

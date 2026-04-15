@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList,
+  XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
-import { getMonthlyStats, getDailyStats, getCategoryStats } from "../api";
-import { fmt, fmtShort, COLORS, currentMonth } from "../utils";
+import { getMonthlyStats, getDailyCategoryStats, getCategoryStats } from "../api";
+import { fmt, fmtShort, COLORS, getCatColor, currentMonth } from "../utils";
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="chart-tooltip">
       <div className="tooltip-label">{label}</div>
-      {payload.map((p, i) => (
+      {payload.filter((p) => p.value > 0).map((p, i) => (
         <div key={i} style={{ color: p.color }}>{p.name}: {fmtShort(p.value)}đ</div>
       ))}
     </div>
@@ -37,30 +37,52 @@ export default function Reports() {
   const [daily, setDaily] = useState([]);
   const [catStats, setCatStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeCategories, setActiveCategories] = useState(new Set());
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getMonthlyStats(month), getDailyStats(month), getCategoryStats(month)])
+    Promise.all([getMonthlyStats(month), getDailyCategoryStats(month), getCategoryStats(month)])
       .then(([m, d, c]) => { setMonthly(m); setDaily(d); setCatStats(c); })
       .finally(() => setLoading(false));
   }, [month]);
 
-  const todayDate = new Date().toISOString().slice(0, 10);
-  const dailyChartData = daily.map((d) => ({ ...d, isToday: d.date === todayDate, label: d.date.slice(8, 10) }));
+  useEffect(() => {
+    if (catStats?.categories) {
+      setActiveCategories(new Set(catStats.categories.map((c) => c.name)));
+    }
+  }, [catStats]);
 
-  const pieData = (catStats?.categories || []).map((c, i) => ({
-    name: c.name, value: c.total, percentage: c.percentage, icon: c.icon, fill: COLORS[i % COLORS.length],
-  }));
+  const toggleCategory = (name) => {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
-  const barData = (catStats?.categories || []).slice(0, 7).map((c, i) => ({
-    name: c.name, total: c.total, fill: COLORS[i % COLORS.length],
-  }));
+  const allDailyCategories = daily.length > 0
+    ? Object.keys(daily[0]).filter((k) => k !== "date" && k !== "label")
+    : [];
+  const dailyCategories = allDailyCategories.filter((k) => activeCategories.has(k));
+
+  const pieData = (catStats?.categories || [])
+    .filter((c) => activeCategories.has(c.name))
+    .map((c, i) => ({
+      name: c.name, value: c.total, percentage: c.percentage, icon: c.icon, fill: getCatColor(c.name, i),
+    }));
+
+  const barData = (catStats?.categories || [])
+    .filter((c) => activeCategories.has(c.name))
+    .slice(0, 7)
+    .map((c, i) => ({
+      name: c.name, total: c.total, fill: getCatColor(c.name, i),
+    }));
 
   return (
     <>
       <header className="topbar">
         <div>
-          <h1 className="page-title">Báo cáo</h1>
+          <h1 className="page-title">Báo cáo chi tiết</h1>
           <p className="page-sub">Phân tích chi tiêu theo tháng</p>
         </div>
         <select className="filter-input" value={month} onChange={(e) => setMonth(e.target.value)}>
@@ -96,23 +118,46 @@ export default function Reports() {
             </div>
           </div>
 
-          {/* Daily trend */}
+          {/* Category filter chips */}
+          {(catStats?.categories || []).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {catStats.categories.map((c) => {
+                const active = activeCategories.has(c.name);
+                return (
+                  <button
+                    key={c.name}
+                    onClick={() => toggleCategory(c.name)}
+                    style={{
+                      padding: "4px 10px", fontSize: 12, borderRadius: 999,
+                      border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                      background: "var(--card)", color: "var(--text-secondary)",
+                      cursor: "pointer", opacity: active ? 1 : 0.4,
+                      transition: "opacity 0.15s, border-color 0.15s",
+                    }}
+                  >
+                    {c.icon} {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Daily trend — stacked by category */}
           <div className="card">
             <div className="section-header"><h2>Chi tiêu theo ngày — {month}</h2></div>
-            {dailyChartData.length === 0 ? (
+            {daily.length === 0 ? (
               <div className="empty-state">Không có dữ liệu tháng này</div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={dailyChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={daily} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="expense" name="Chi tiêu" radius={[4, 4, 0, 0]}>
-                    {dailyChartData.map((entry, i) => (
-                      <Cell key={i} fill={entry.isToday ? "var(--accent)" : "#4d6aaa"} />
-                    ))}
-                  </Bar>
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                  {dailyCategories.map((cat, i) => (
+                    <Bar key={cat} dataKey={cat} stackId="a" fill={getCatColor(cat, i)} radius={i === dailyCategories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  ))}
                 </BarChart>
               </ResponsiveContainer>
             )}

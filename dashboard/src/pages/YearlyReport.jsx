@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
 } from "recharts";
 import { getYearlyStats } from "../api";
-import { fmt, fmtShort, COLORS } from "../utils";
+import { fmt, fmtShort, getCatColor } from "../utils";
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -12,7 +12,9 @@ function CustomTooltip({ active, payload, label }) {
     <div className="chart-tooltip">
       <div className="tooltip-label">{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color }}>{p.name}: {fmtShort(p.value)}đ</div>
+        <div key={i} style={{ color: p.color }}>
+          {p.name}: {p.dataKey === "balance" && p.value > 0 ? "+" : ""}{fmtShort(p.value)}đ
+        </div>
       ))}
     </div>
   );
@@ -25,11 +27,26 @@ export default function YearlyReport() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeCategories, setActiveCategories] = useState(new Set());
 
   useEffect(() => {
     setLoading(true);
     getYearlyStats(year).then(setData).finally(() => setLoading(false));
   }, [year]);
+
+  useEffect(() => {
+    if (data?.categories) {
+      setActiveCategories(new Set(data.categories.map((c) => c.name)));
+    }
+  }, [data]);
+
+  const toggleCategory = (name) => {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
   const monthlyChart = (data?.monthly || []).map((m, i) => ({
     ...m,
@@ -37,13 +54,24 @@ export default function YearlyReport() {
     total: m.expense + m.fixed,
   }));
 
-  const pieData = (data?.categories || []).slice(0, 8).map((c, i) => ({
-    ...c, fill: COLORS[i % COLORS.length],
+  const balanceChart = monthlyChart.map(m => ({
+    label: m.label,
+    balance: (m.income || 0) - (m.expense || 0) - (m.fixed || 0),
   }));
 
-  const barData = (data?.categories || []).slice(0, 7).map((c, i) => ({
-    ...c, fill: COLORS[i % COLORS.length],
-  }));
+  const pieData = (data?.categories || [])
+    .filter((c) => activeCategories.has(c.name))
+    .slice(0, 8)
+    .map((c, i) => ({
+      ...c, fill: getCatColor(c.name, i),
+    }));
+
+  const barData = (data?.categories || [])
+    .filter((c) => activeCategories.has(c.name))
+    .slice(0, 7)
+    .map((c, i) => ({
+      ...c, fill: getCatColor(c.name, i),
+    }));
 
   return (
     <>
@@ -94,6 +122,49 @@ export default function YearlyReport() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Balance chart */}
+          <div className="card">
+            <div className="section-header"><h2>Số dư theo tháng — {year}</h2></div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={balanceChart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
+                <Tooltip content={<CustomTooltip />} />
+                <ReferenceLine y={0} stroke="var(--border)" strokeWidth={1.5} />
+                <Bar dataKey="balance" name="Số dư" radius={[4, 4, 0, 0]}>
+                  {balanceChart.map((entry, i) => (
+                    <Cell key={i} fill={entry.balance >= 0 ? "var(--green)" : "var(--red)"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Category filter chips */}
+          {(data?.categories || []).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {data.categories.map((c) => {
+                const active = activeCategories.has(c.name);
+                return (
+                  <button
+                    key={c.name}
+                    onClick={() => toggleCategory(c.name)}
+                    style={{
+                      padding: "4px 10px", fontSize: 12, borderRadius: 999,
+                      border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                      background: "var(--card)", color: "var(--text-secondary)",
+                      cursor: "pointer", opacity: active ? 1 : 0.4,
+                      transition: "opacity 0.15s, border-color 0.15s",
+                    }}
+                  >
+                    {c.icon} {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Top categories bar */}

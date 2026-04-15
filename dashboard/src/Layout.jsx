@@ -5,7 +5,7 @@ const NAV = [
   { to: "/", label: "Tổng quan", icon: "📊" },
   { to: "/transactions", label: "Giao dịch", icon: "💳" },
   { to: "/categories", label: "Danh mục", icon: "🗂️" },
-  { to: "/reports", label: "Báo cáo theo tháng", icon: "📈" },
+  { to: "/reports", label: "Báo cáo chi tiết", icon: "📈" },
   { to: "/yearly", label: "Báo cáo theo năm", icon: "📅" },
 ];
 

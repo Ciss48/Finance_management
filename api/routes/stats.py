@@ -40,6 +40,41 @@ def daily_stats(month: Optional[str] = Query(None, description="YYYY-MM, default
     return sorted(daily.values(), key=lambda x: x["date"])
 
 
+@router.get("/daily-by-category")
+def daily_stats_by_category(month: Optional[str] = Query(None, description="YYYY-MM, defaults to current month")):
+    target_month = month or _current_month()
+    db = get_client()
+
+    result = db.table("transactions").select(
+        "amount, created_at, categories(name)"
+    ).gte(
+        "created_at", f"{target_month}-01T00:00:00+00:00"
+    ).lt(
+        "created_at", _next_month(target_month) + "-01T00:00:00+00:00"
+    ).eq("type", "expense").execute()
+
+    # Collect all categories and daily totals
+    daily: dict[str, dict] = {}
+    all_categories: set[str] = set()
+
+    for row in result.data:
+        day = row["created_at"][:10]
+        cat = row.get("categories") or {"name": "Khác"}
+        cat_name = cat.get("name", "Khác")
+        all_categories.add(cat_name)
+        if day not in daily:
+            daily[day] = {"date": day, "label": day[8:10]}
+        daily[day][cat_name] = daily[day].get(cat_name, 0) + float(row["amount"])
+
+    # Fill zeros for missing categories on each day
+    for day_data in daily.values():
+        for cat_name in all_categories:
+            if cat_name not in day_data:
+                day_data[cat_name] = 0
+
+    return sorted(daily.values(), key=lambda x: x["date"])
+
+
 @router.get("/monthly")
 def monthly_stats(month: Optional[str] = Query(None, description="YYYY-MM, defaults to current month")):
     target_month = month or _current_month()
