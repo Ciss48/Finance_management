@@ -12,3 +12,8 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 APP_ENV = os.getenv("APP_ENV", "development")
 APP_PORT = int(os.getenv("APP_PORT") or os.getenv("PORT", "8000"))
+
+# Webhook mode (production). Leave empty to use polling (local dev).
+# Example: https://finance-management-7v45.onrender.com
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
