@@ -23,6 +23,8 @@ FIXED_COST_RULES = [
     ("Tiền nhà",       ["tiền nhà", "tiền thuê nhà", "nhà"]),
     ("Tiền gym",       ["tiền gym", "gym"]),
     ("Tiền Claude Code", ["claude code", "claude", "tiền claude"]),
+    ("Đầu tư",        ["đầu tư", "invest"]),
+    ("Khác",           ["chi phí khác", "phí khác", "khác"]),
 ]
 
 # Từ khoá thu nhập

@@ -46,20 +46,23 @@ def daily_stats_by_category(month: Optional[str] = Query(None, description="YYYY
     db = get_client()
 
     result = db.table("transactions").select(
-        "amount, created_at, categories(name)"
+        "amount, created_at, categories(name, type)"
     ).gte(
         "created_at", f"{target_month}-01T00:00:00+00:00"
     ).lt(
         "created_at", _next_month(target_month) + "-01T00:00:00+00:00"
     ).eq("type", "expense").execute()
 
-    # Collect all categories and daily totals
+    # Collect all categories and daily totals (exclude fixed-type categories)
     daily: dict[str, dict] = {}
     all_categories: set[str] = set()
 
     for row in result.data:
+        cat = row.get("categories") or {"name": "Khác", "type": "daily"}
+        # Bỏ qua danh mục cố định (đầu tư, chi phí khác...) — chúng hiển thị ở mục chi phí cố định
+        if cat.get("type") == "fixed":
+            continue
         day = row["created_at"][:10]
-        cat = row.get("categories") or {"name": "Khác"}
         cat_name = cat.get("name", "Khác")
         all_categories.add(cat_name)
         if day not in daily:
