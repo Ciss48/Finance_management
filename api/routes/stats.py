@@ -84,7 +84,9 @@ def monthly_stats(month: Optional[str] = Query(None, description="YYYY-MM, defau
     db = get_client()
 
     # All transactions for the month
-    txn_result = db.table("transactions").select("amount, type").gte(
+    txn_result = db.table("transactions").select(
+        "amount, type, categories(name, icon, type)"
+    ).gte(
         "created_at", f"{target_month}-01T00:00:00+00:00"
     ).lt(
         "created_at", _next_month(target_month) + "-01T00:00:00+00:00"
@@ -93,12 +95,38 @@ def monthly_stats(month: Optional[str] = Query(None, description="YYYY-MM, defau
     total_expense = sum(float(r["amount"]) for r in txn_result.data if r["type"] == "expense")
     total_income = sum(float(r["amount"]) for r in txn_result.data if r["type"] == "income")
 
-    # Fixed costs for the month
+    # Fixed costs from monthly_fixed_costs table
     fixed_result = db.table("monthly_fixed_costs").select(
         "amount, categories(name, icon)"
     ).eq("month", target_month).execute()
 
-    total_fixed = sum(float(r["amount"]) for r in fixed_result.data)
+    # Also gather fixed-type transactions from transactions table (Đầu tư, Khác, etc.)
+    fixed_from_txn: dict[str, dict] = {}
+    for r in txn_result.data:
+        cat = r.get("categories")
+        if cat and cat.get("type") == "fixed":
+            cat_name = cat["name"]
+            if cat_name not in fixed_from_txn:
+                fixed_from_txn[cat_name] = {
+                    "amount": 0,
+                    "categories": {"name": cat_name, "icon": cat.get("icon", "📦")},
+                }
+            fixed_from_txn[cat_name]["amount"] += float(r["amount"])
+
+    # Merge: monthly_fixed_costs + fixed-type transactions
+    all_fixed = list(fixed_result.data)
+    existing_names = {r["categories"]["name"] for r in all_fixed if r.get("categories")}
+    for name, entry in fixed_from_txn.items():
+        if name not in existing_names:
+            all_fixed.append(entry)
+        else:
+            # Add to existing fixed cost entry
+            for fc in all_fixed:
+                if fc.get("categories", {}).get("name") == name:
+                    fc["amount"] = float(fc["amount"]) + entry["amount"]
+                    break
+
+    total_fixed = sum(float(r["amount"]) for r in all_fixed)
 
     # Today totals
     today = _today()
@@ -125,7 +153,7 @@ def monthly_stats(month: Optional[str] = Query(None, description="YYYY-MM, defau
         "total_income": total_income,
         "total_fixed": total_fixed,
         "variable_expense": total_expense,
-        "fixed_costs": fixed_result.data,
+        "fixed_costs": all_fixed,
         "today_expense": today_expense,
         "today_income": today_income,
         "week_expense": week_expense,
@@ -174,7 +202,7 @@ def yearly_stats(year: Optional[int] = Query(None, description="Năm, mặc đ�
 
     # Lấy toàn bộ transactions trong năm
     txn_result = db.table("transactions").select(
-        "amount, type, category_id, created_at, categories(id, name, icon)"
+        "amount, type, category_id, created_at, categories(id, name, icon, type)"
     ).gte("created_at", f"{target_year}-01-01T00:00:00+00:00").lt(
         "created_at", f"{target_year + 1}-01-01T00:00:00+00:00"
     ).execute()
@@ -193,7 +221,11 @@ def yearly_stats(year: Optional[int] = Query(None, description="Năm, mặc đ�
     for row in txn_result.data:
         m = row["created_at"][:7]
         if m in monthly:
-            if row["type"] == "expense":
+            cat = row.get("categories")
+            # Fixed-type transactions count as fixed, not variable expense
+            if cat and cat.get("type") == "fixed":
+                monthly[m]["fixed"] += float(row["amount"])
+            elif row["type"] == "expense":
                 monthly[m]["expense"] += float(row["amount"])
             else:
                 monthly[m]["income"] += float(row["amount"])
