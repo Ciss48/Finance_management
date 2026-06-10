@@ -22,12 +22,15 @@ async def lifespan(app: FastAPI):
 
     if WEBHOOK_URL:
         webhook_endpoint = f"{WEBHOOK_URL}/api/telegram/webhook"
-        await _bot_app.bot.set_webhook(
-            url=webhook_endpoint,
-            secret_token=WEBHOOK_SECRET or None,
-            allowed_updates=["message", "callback_query"],
-        )
-        logger.info("Telegram webhook registered: %s", webhook_endpoint)
+        try:
+            await _bot_app.bot.set_webhook(
+                url=webhook_endpoint,
+                secret_token=WEBHOOK_SECRET or None,
+                allowed_updates=["message", "callback_query"],
+            )
+            logger.info("Telegram webhook registered: %s", webhook_endpoint)
+        except Exception as exc:
+            logger.error("Failed to register webhook (will retry on next restart): %s", exc)
     else:
         logger.info("WEBHOOK_URL not set — webhook not registered (use run_bot.py for local polling)")
 
@@ -65,6 +68,9 @@ async def telegram_webhook(request: Request):
             raise HTTPException(status_code=403, detail="Forbidden")
 
     data = await request.json()
-    update = Update.de_json(data, _bot_app.bot)
-    await _bot_app.process_update(update)
+    try:
+        update = Update.de_json(data, _bot_app.bot)
+        await _bot_app.process_update(update)
+    except Exception as exc:
+        logger.error("Error processing update: %s", exc)
     return Response(status_code=200)
