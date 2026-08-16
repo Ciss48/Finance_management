@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
 } from "recharts";
-import { getMonthlyStats, getDailyStats, getDailyCategoryStats, getCategoryStats, getTransactions, deleteTransaction } from "../api";
+import { getMonthlyStats, getDailyStats, getDailyCategoryStats, getCategoryStats, getTransactions, deleteTransaction, getBudget, saveBudget } from "../api";
 import { fmt, fmtShort, getCatColor, currentMonth } from "../utils";
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
@@ -64,6 +64,90 @@ const CustomBar = (props) => {
   );
 };
 
+function DayDetailModal({ date, transactions, loading, error, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const expenses = transactions.filter((t) => t.type === "expense");
+  const income = transactions.filter((t) => t.type === "income");
+  const totalExpense = expenses.reduce((s, t) => s + Number(t.amount), 0);
+  const totalIncome = income.reduce((s, t) => s + Number(t.amount), 0);
+
+  const [y, m, d] = date.split("-");
+  const heading = `Ngày ${d}/${m}/${y}`;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" role="dialog" aria-modal="true" aria-label={heading} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2 className="modal-title">{heading}</h2>
+            <p className="modal-sub">Chi tiết giao dịch trong ngày</p>
+          </div>
+          <button className="modal-close" onClick={onClose} title="Đóng">×</button>
+        </div>
+
+        <div className="modal-summary">
+          <div className="modal-summary-item">
+            <span className="modal-summary-label">Tổng chi</span>
+            <span className="modal-summary-val expense">{fmt(totalExpense)}</span>
+          </div>
+          {totalIncome > 0 && (
+            <div className="modal-summary-item">
+              <span className="modal-summary-label">Tổng thu</span>
+              <span className="modal-summary-val income">{fmt(totalIncome)}</span>
+            </div>
+          )}
+          <div className="modal-summary-item">
+            <span className="modal-summary-label">Số giao dịch</span>
+            <span className="modal-summary-val">{transactions.length}</span>
+          </div>
+        </div>
+
+        <div className="modal-body">
+          {loading && <div className="full-center" style={{ height: 140 }}><div className="spinner" /></div>}
+          {!loading && error && <div className="empty-state error-msg">{error}</div>}
+          {!loading && !error && transactions.length === 0 && (
+            <div className="empty-state">Không có giao dịch nào trong ngày này</div>
+          )}
+          {!loading && !error && transactions.map((t) => (
+            <div key={t.id} className="txn-item">
+              <div className="txn-icon">{t.categories?.icon || "📦"}</div>
+              <div className="txn-info">
+                <div className="txn-cat">
+                  {t.categories?.name || "Khác"}
+                  {t.categories?.type === "fixed" && <span className="cat-badge fixed" style={{ marginLeft: 8 }}>cố định</span>}
+                </div>
+                {t.note && <div className="txn-note">{t.note}</div>}
+                <div className="txn-time">
+                  {new Date(t.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                  {t.source ? ` · ${t.source}` : ""}
+                </div>
+              </div>
+              <div className={`txn-amount ${t.type === "income" ? "income" : "expense"}`}>
+                {t.type === "income" ? "+" : "-"}{fmt(t.amount)}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {!loading && !error && transactions.some((t) => t.categories?.type === "fixed") && (
+          <div className="modal-foot">
+            Mục <b>cố định</b> không được tính vào cột biểu đồ chi tiêu theo ngày.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Overview() {
   const [month, setMonth] = useState(currentMonth);
   const [budget, setBudget] = useState(0);
@@ -75,6 +159,16 @@ export default function Overview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeCategories, setActiveCategories] = useState(new Set());
+  const [budgetStatus, setBudgetStatus] = useState(null); // 'saving' | 'saved' | 'local'
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [dayTxns, setDayTxns] = useState([]);
+  const [dayLoading, setDayLoading] = useState(false);
+  const [dayError, setDayError] = useState(null);
+
+  const budgetTimer = useRef(null);
+  const budgetDirty = useRef(false);
+  const pendingBudget = useRef(null);
+  const monthRef = useRef(month);
 
   const today = new Date();
   const todayStr = today.toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -95,10 +189,71 @@ export default function Overview() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Gửi ngay thay đổi ngân sách đang chờ (khi blur / đổi tháng / rời trang).
+  const flushBudget = useCallback(() => {
+    clearTimeout(budgetTimer.current);
+    const pending = pendingBudget.current;
+    if (!pending) return;
+    pendingBudget.current = null;
+    saveBudget(pending.month, pending.value)
+      .then(() => { if (monthRef.current === pending.month) setBudgetStatus("saved"); })
+      .catch(() => { if (monthRef.current === pending.month) setBudgetStatus("local"); });
+  }, []);
+
+  // Ngân sách: hiện giá trị cache ngay, rồi đồng bộ với giá trị đã lưu trên server.
   useEffect(() => {
-    const saved = localStorage.getItem("budget_" + month);
-    setBudget(saved ? Number(saved) : 0);
-  }, [month]);
+    let cancelled = false;
+    monthRef.current = month;
+    budgetDirty.current = false;
+    setBudgetStatus(null);
+
+    const cached = localStorage.getItem("budget_" + month);
+    setBudget(cached ? Number(cached) : 0);
+
+    getBudget(month)
+      .then((b) => {
+        if (cancelled || budgetDirty.current) return;
+        const amount = Number(b?.amount) || 0;
+        setBudget(amount);
+        localStorage.setItem("budget_" + month, amount);
+      })
+      .catch(() => {
+        // API chưa sẵn sàng (chưa chạy migration) — vẫn dùng giá trị cache trên máy.
+        if (!cancelled) setBudgetStatus("local");
+      });
+
+    return () => { cancelled = true; flushBudget(); };
+  }, [month, flushBudget]);
+
+  useEffect(() => flushBudget, [flushBudget]);
+
+  const handleBudgetChange = (e) => {
+    const value = Number(e.target.value) || 0;
+    setBudget(value);
+    budgetDirty.current = true;
+    localStorage.setItem("budget_" + month, value);
+
+    pendingBudget.current = { month, value };
+    clearTimeout(budgetTimer.current);
+    setBudgetStatus("saving");
+    budgetTimer.current = setTimeout(flushBudget, 600);
+  };
+
+  // Chi tiết giao dịch của ngày được chọn trên biểu đồ
+  useEffect(() => {
+    if (!selectedDay) return;
+    let cancelled = false;
+    setDayLoading(true);
+    setDayError(null);
+    setDayTxns([]);
+
+    getTransactions({ date: selectedDay, limit: 200 })
+      .then((rows) => { if (!cancelled) setDayTxns(rows); })
+      .catch(() => { if (!cancelled) setDayError("Không tải được giao dịch của ngày này."); })
+      .finally(() => { if (!cancelled) setDayLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [selectedDay]);
 
   useEffect(() => {
     if (catStats?.categories) {
@@ -138,6 +293,21 @@ export default function Overview() {
     return { ...d, expense: filteredExpense, isToday: d.date === todayDate, label: d.date.slice(8, 10) };
   });
 
+  // Bấm trực tiếp vào cột — nguồn sự kiện chính, luôn có payload của ngày.
+  const handleBarClick = (data) => {
+    const date = data?.payload?.date || data?.date;
+    if (date) setSelectedDay(date);
+  };
+
+  // Bấm vào khoảng trống của cột (ngày không chi tiêu thì không có hình chữ nhật để bấm).
+  const handleChartClick = (state) => {
+    const raw = state?.activeTooltipIndex ?? state?.activeIndex;
+    const index = typeof raw === "string" ? Number(raw) : raw;
+    if (index == null || Number.isNaN(index)) return;
+    const row = dailyChartData[index];
+    if (row?.date) setSelectedDay(row.date);
+  };
+
   const totalExpense = (monthly?.total_fixed || 0) + (monthly?.total_expense || 0);
   const hasData = daily.length > 0 || (catStats?.categories?.length > 0);
 
@@ -160,13 +330,22 @@ export default function Overview() {
         <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>💰 Ngân sách tháng:</span>
         <input
           type="number"
+          min="0"
           placeholder="Nhập ngân sách..."
           value={budget || ""}
-          onChange={(e) => { const v = Number(e.target.value); setBudget(v); localStorage.setItem("budget_" + month, v); }}
+          onChange={handleBudgetChange}
+          onBlur={flushBudget}
           className="filter-input"
           style={{ width: 160 }}
         />
         <span style={{ color: "var(--text-muted)", fontSize: 13 }}>đ</span>
+        {budgetStatus === "saving" && <span className="budget-hint">Đang lưu…</span>}
+        {budgetStatus === "saved" && <span className="budget-hint saved">✓ Đã lưu</span>}
+        {budgetStatus === "local" && (
+          <span className="budget-hint warn" title="Chạy migrations/001_monthly_budgets.sql trong Supabase để lưu lên server">
+            ⚠ Chỉ lưu trên máy này
+          </span>
+        )}
       </div>
 
       {/* Hero: Tổng chi */}
@@ -223,7 +402,10 @@ export default function Overview() {
         <>
           <div className="charts-row">
             <div className="card chart-card">
-              <div className="section-header"><h2>Chi tiêu theo ngày</h2></div>
+              <div className="section-header">
+                <h2>Chi tiêu theo ngày</h2>
+                <span className="section-hint">Bấm vào một ngày để xem chi tiết</span>
+              </div>
               {(catStats?.categories || []).length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                   {catStats.categories.map((c) => {
@@ -247,7 +429,12 @@ export default function Overview() {
                 </div>
               )}
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={dailyChartData} margin={{ top: 22, right: 4, left: 0, bottom: 0 }}>
+                <BarChart
+                  data={dailyChartData}
+                  margin={{ top: 22, right: 4, left: 0, bottom: 0 }}
+                  onClick={handleChartClick}
+                  style={{ cursor: "pointer" }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={45} />
@@ -255,7 +442,7 @@ export default function Overview() {
                   {budget > 0 && (
                     <ReferenceLine y={budget} stroke="var(--yellow)" strokeDasharray="4 4" label={{ value: fmtShort(budget) + "đ", position: "right", fill: "var(--yellow)", fontSize: 11 }} />
                   )}
-                  <Bar dataKey="expense" name="Chi tiêu" shape={<CustomBar />}>
+                  <Bar dataKey="expense" name="Chi tiêu" shape={<CustomBar />} onClick={handleBarClick} cursor="pointer">
                     <LabelList
                       dataKey="expense"
                       position="top"
@@ -356,6 +543,16 @@ export default function Overview() {
             </div>
           </div>
         </>
+      )}
+
+      {selectedDay && (
+        <DayDetailModal
+          date={selectedDay}
+          transactions={dayTxns}
+          loading={dayLoading}
+          error={dayError}
+          onClose={() => setSelectedDay(null)}
+        />
       )}
     </>
   );

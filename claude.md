@@ -62,16 +62,18 @@ When no category is found for an expense, `handlers.py` stores the parsed transa
 The implemented categories differ from the initial spec:
 - Ăn uống, Cà phê, Xăng xe, Du lịch, Di chuyển, Giải trí/Bạn bè, Tạp hóa / Chợ / Siêu thị, Mua sắm, Sức khỏe
 
-Fixed categories: Tiền nhà, Tiền gym, Tiền Claude Code
+Fixed categories: Tiền nhà, Tiền gym, Tiền Claude Code, Đầu tư, Khác
 
 ### API Routes
 All prefixed with `/api/`:
 - `transactions` — GET (filters: `date`, `month`, `category_id`, `limit`), POST, DELETE `/{id}`
 - `categories` — GET, POST
 - `stats/daily` — daily totals for a month (`?month=YYYY-MM`)
+- `stats/daily-by-category` — daily breakdown by category (`?month=YYYY-MM`)
 - `stats/monthly` — today/week/month summary + fixed costs
 - `stats/by-category` — expense breakdown with percentages
 - `stats/yearly` — full year breakdown by month + category totals
+- `budgets` — GET (`?month=YYYY-MM`, returns `amount: 0` when unset), PUT (upsert `{month, amount}`)
 
 ### Dashboard Pages (`dashboard/src/pages/`)
 - `Overview` — today/week/month summary cards + fixed costs
@@ -87,12 +89,33 @@ All API calls are centralized in `dashboard/src/api.js`. Currency formatting uti
 
 ---
 
+### Database Tables (Supabase)
+- `transactions` — id, amount, type (`expense`/`income`), category_id (FK → categories), note, created_at, source (`telegram`/`api`)
+- `categories` — id, name, icon, type (`daily`/`fixed`). Fixed-type categories are excluded from daily spending charts
+- `monthly_fixed_costs` — id, category_id (FK → categories), amount, month (`YYYY-MM`), note. Upserted per category+month
+- `monthly_budgets` — id, month (`YYYY-MM`, unique), amount, updated_at. One budget per month, upserted on `month`
+
+DDL lives in `migrations/` — apply by hand in the Supabase SQL Editor (no migration runner in this project).
+
+Stats endpoints combine both `monthly_fixed_costs` rows and fixed-type `transactions` when calculating fixed costs — be careful not to double-count.
+
+---
+
+## Deployment
+
+- **Backend + Bot** → Render (Python). Entry point: `start_all.py` runs `run_api.py` in a loop with auto-restart. Bot starts in webhook mode via FastAPI lifespan (`/api/telegram/webhook` with secret token validation). `ping.py` runs as a Render cron job every 14 minutes to prevent free-tier sleep.
+- **Dashboard** → Vercel. Config in `vercel.json`, outputs `dashboard/dist/`.
+- Python pinned to 3.11.9 (`runtime.txt`)
+
+---
+
 ## Coding Standards
 
 - `config.py` is the single file that reads `.env` — import env vars from there, never call `os.getenv()` elsewhere
 - Python venv is at `venv/` — always activate before running
 - FastAPI routes organized by resource in `api/routes/`
 - No tests currently exist in the project
+- Environment variables documented in `.env.example` — never commit `.env`
 
 ---
 

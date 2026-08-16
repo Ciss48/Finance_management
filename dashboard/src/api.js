@@ -26,3 +26,9 @@ export const getDailyCategoryStats = (month) =>
 
 export const getYearlyStats = (year) =>
   api.get("/api/stats/yearly", { params: year ? { year } : {} }).then((r) => r.data);
+
+export const getBudget = (month) =>
+  api.get("/api/budgets", { params: month ? { month } : {} }).then((r) => r.data);
+
+export const saveBudget = (month, amount) =>
+  api.put("/api/budgets", { month, amount }).then((r) => r.data);

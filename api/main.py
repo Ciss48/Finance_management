@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from telegram import Update
 
-from api.routes import transactions, categories, stats
+from api.routes import transactions, categories, stats, budgets
 from bot.app import create_application
 from config import WEBHOOK_URL, WEBHOOK_SECRET
 
@@ -53,6 +53,7 @@ app.add_middleware(
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
 app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
+app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
 
 
 @app.get("/")
