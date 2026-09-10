@@ -60,9 +60,11 @@ When no category is found for an expense, `handlers.py` stores the parsed transa
 
 ### Actual Daily Categories (in `KEYWORD_RULES`)
 The implemented categories differ from the initial spec:
-- Ăn uống, Cà phê, Xăng xe, Du lịch, Di chuyển, Giải trí/Bạn bè, Tạp hóa / Chợ / Siêu thị, Mua sắm, Sức khỏe
+- Ăn uống, Cà phê, Xăng xe, Du lịch, Di chuyển, Giải trí/Bạn bè, Tạp hóa / Chợ / Siêu thị, Mua sắm, Sức khỏe, Khác
 
-Fixed categories: Tiền nhà, Tiền gym, Tiền Claude Code, Đầu tư, Khác
+Fixed categories: Tiền nhà, Tiền gym, Tiền Claude Code, Đầu tư
+
+`Khác` is deliberately a **daily** category, not fixed: `monthly_fixed_costs` upserts per (category, month), so a fixed `Khác` would overwrite instead of accumulate. Uncontrolled one-off spending needs one row per entry in `transactions`.
 
 ### API Routes
 All prefixed with `/api/`:

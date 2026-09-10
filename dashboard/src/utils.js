@@ -19,6 +19,7 @@ const CATEGORY_COLORS = {
   "Tạp hóa / Chợ / Siêu thị":  "#3ecf8e",
   "Mua sắm":                    "#ec4899",
   "Sức khỏe":                   "#34d399",
+  "Khác":                       "#94a3b8",
 };
 
 export const getCatColor = (name, fallbackIndex) =>

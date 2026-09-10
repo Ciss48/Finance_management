@@ -59,7 +59,7 @@ def daily_stats_by_category(month: Optional[str] = Query(None, description="YYYY
 
     for row in result.data:
         cat = row.get("categories") or {"name": "Khác", "type": "daily"}
-        # Bỏ qua danh mục cố định (đầu tư, chi phí khác...) — chúng hiển thị ở mục chi phí cố định
+        # Bỏ qua danh mục cố định (tiền nhà, gym, đầu tư...) — chúng hiển thị ở mục chi phí cố định
         if cat.get("type") == "fixed":
             continue
         day = row["created_at"][:10]
@@ -100,7 +100,7 @@ def monthly_stats(month: Optional[str] = Query(None, description="YYYY-MM, defau
         "amount, categories(name, icon)"
     ).eq("month", target_month).execute()
 
-    # Also gather fixed-type transactions from transactions table (Đầu tư, Khác, etc.)
+    # Also gather fixed-type transactions from transactions table (Đầu tư, etc.)
     fixed_from_txn: dict[str, dict] = {}
     for r in txn_result.data:
         cat = r.get("categories")

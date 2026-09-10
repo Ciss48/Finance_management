@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
@@ -255,11 +255,28 @@ export default function Overview() {
     return () => { cancelled = true; };
   }, [selectedDay]);
 
-  useEffect(() => {
-    if (catStats?.categories) {
-      setActiveCategories(new Set(catStats.categories.map((c) => c.name)));
+  // Danh mục thực sự xuất hiện trên biểu đồ theo ngày (API đã loại chi phí cố định).
+  // Bộ lọc luôn khớp với dữ liệu đang vẽ — kể cả "Khác".
+  const dailyCategories = useMemo(() => {
+    const iconByName = {};
+    for (const c of catStats?.categories || []) iconByName[c.name] = c.icon;
+
+    const totals = {};
+    for (const row of dailyByCat) {
+      for (const [key, value] of Object.entries(row)) {
+        if (key === "date" || key === "label") continue;
+        totals[key] = (totals[key] || 0) + Number(value || 0);
+      }
     }
-  }, [catStats]);
+
+    return Object.entries(totals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, total]) => ({ name, total, icon: iconByName[name] || "📦" }));
+  }, [dailyByCat, catStats]);
+
+  useEffect(() => {
+    setActiveCategories(new Set(dailyCategories.map((c) => c.name)));
+  }, [dailyCategories]);
 
   const toggleCategory = (name) => {
     setActiveCategories((prev) => {
@@ -406,9 +423,9 @@ export default function Overview() {
                 <h2>Chi tiêu theo ngày</h2>
                 <span className="section-hint">Bấm vào một ngày để xem chi tiết</span>
               </div>
-              {(catStats?.categories || []).length > 0 && (
+              {dailyCategories.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                  {catStats.categories.map((c) => {
+                  {dailyCategories.map((c) => {
                     const active = activeCategories.has(c.name);
                     return (
                       <button

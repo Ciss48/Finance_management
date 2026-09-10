@@ -16,6 +16,7 @@ KEYWORD_RULES = [
     ("Tạp hóa / Chợ / Siêu thị",["siêu thị", "tạp hóa", "chợ"]),
     ("Mua sắm",                  ["mua sắm", "shopee", "tiktok shop", "tiktok", "lazada", "shopping"]),
     ("Sức khỏe",                 ["sức khỏe", "khám bệnh", "bác sĩ", "thuốc"]),
+    ("Khác",                     ["chi phí khác", "phí khác", "khác"]),
 ]
 
 # Danh mục chi phí cố định — khi khớp thì ghi vào monthly_fixed_costs
@@ -24,7 +25,6 @@ FIXED_COST_RULES = [
     ("Tiền gym",       ["tiền gym", "gym"]),
     ("Tiền Claude Code", ["claude code", "claude", "tiền claude"]),
     ("Đầu tư",        ["đầu tư", "invest"]),
-    ("Khác",           ["chi phí khác", "phí khác", "khác"]),
 ]
 
 # Từ khoá thu nhập
