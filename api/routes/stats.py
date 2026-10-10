@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from calendar import monthrange
 from api.database import get_client
 from api.routes.transactions import _next_month
 
@@ -15,6 +16,16 @@ def _today() -> str:
     return datetime.utcnow().strftime("%Y-%m-%d")
 
 
+def _month_day_range(month: str) -> list[str]:
+    """Danh sách YYYY-MM-DD từ ngày 1 đến hết tháng — hoặc đến hôm nay nếu là tháng hiện tại."""
+    year, m = map(int, month.split("-"))
+    last_day = monthrange(year, m)[1]
+    if month == _current_month():
+        last_day = min(last_day, datetime.utcnow().day)
+    start = date(year, m, 1)
+    return [(start + timedelta(days=i)).isoformat() for i in range(last_day)]
+
+
 @router.get("/daily")
 def daily_stats(month: Optional[str] = Query(None, description="YYYY-MM, defaults to current month")):
     target_month = month or _current_month()
@@ -26,8 +37,8 @@ def daily_stats(month: Optional[str] = Query(None, description="YYYY-MM, default
         "created_at", _next_month(target_month) + "-01T00:00:00+00:00"
     ).execute()
 
-    # Aggregate by day
-    daily: dict[str, dict] = {}
+    # Aggregate by day — khởi tạo đủ mọi ngày trong tháng (0đ cho ngày không chi tiêu)
+    daily: dict[str, dict] = {day: {"date": day, "expense": 0, "income": 0} for day in _month_day_range(target_month)}
     for row in result.data:
         day = row["created_at"][:10]
         if day not in daily:
@@ -54,7 +65,7 @@ def daily_stats_by_category(month: Optional[str] = Query(None, description="YYYY
     ).eq("type", "expense").execute()
 
     # Collect all categories and daily totals (exclude fixed-type categories)
-    daily: dict[str, dict] = {}
+    daily: dict[str, dict] = {day: {"date": day, "label": day[8:10]} for day in _month_day_range(target_month)}
     all_categories: set[str] = set()
 
     for row in result.data:

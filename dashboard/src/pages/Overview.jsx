@@ -45,9 +45,10 @@ function PieTooltip({ active, payload }) {
 }
 
 const CustomBar = (props) => {
-  const { x, y, width, height, isToday } = props;
+  const { x, y, width, height, isToday, overLimit, hasLimit } = props;
   if (!height || height <= 0) return null;
-  const fill = isToday ? "var(--accent)" : "#4d6aaa";
+  let fill = isToday ? "var(--accent)" : "#4d6aaa";
+  if (hasLimit) fill = overLimit ? "var(--red)" : "var(--green)";
   const r = 4;
   return (
     <g>
@@ -301,13 +302,23 @@ export default function Overview() {
   }));
 
   const todayDate = currentMonth() === month ? new Date().toISOString().slice(0, 10) : null;
+  const [budgetYear, budgetMonthNum] = month.split("-").map(Number);
+  const daysInMonth = new Date(budgetYear, budgetMonthNum, 0).getDate();
+  const dailyLimit = budget > 0 ? budget / daysInMonth : 0;
   const dailyChartData = (dailyByCat.length > 0 ? dailyByCat : daily).map((d) => {
     const filteredExpense = dailyByCat.length > 0
       ? Object.entries(d)
           .filter(([k]) => k !== "date" && k !== "label" && activeCategories.has(k))
           .reduce((sum, [, v]) => sum + v, 0)
       : d.expense;
-    return { ...d, expense: filteredExpense, isToday: d.date === todayDate, label: d.date.slice(8, 10) };
+    return {
+      ...d,
+      expense: filteredExpense,
+      isToday: d.date === todayDate,
+      label: d.date.slice(8, 10),
+      hasLimit: dailyLimit > 0,
+      overLimit: dailyLimit > 0 && filteredExpense > dailyLimit,
+    };
   });
 
   // Bấm trực tiếp vào cột — nguồn sự kiện chính, luôn có payload của ngày.
@@ -456,8 +467,8 @@ export default function Overview() {
                   <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtShort} tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={45} />
                   <Tooltip content={<CustomTooltip />} />
-                  {budget > 0 && (
-                    <ReferenceLine y={budget} stroke="var(--yellow)" strokeDasharray="4 4" label={{ value: fmtShort(budget) + "đ", position: "right", fill: "var(--yellow)", fontSize: 11 }} />
+                  {dailyLimit > 0 && (
+                    <ReferenceLine y={dailyLimit} stroke="var(--yellow)" strokeDasharray="4 4" label={{ value: fmtShort(dailyLimit) + "đ/ngày", position: "right", fill: "var(--yellow)", fontSize: 11 }} />
                   )}
                   <Bar dataKey="expense" name="Chi tiêu" shape={<CustomBar />} onClick={handleBarClick} cursor="pointer">
                     <LabelList
