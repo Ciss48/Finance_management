@@ -302,9 +302,8 @@ export default function Overview() {
   }));
 
   const todayDate = currentMonth() === month ? new Date().toISOString().slice(0, 10) : null;
-  const [budgetYear, budgetMonthNum] = month.split("-").map(Number);
-  const daysInMonth = new Date(budgetYear, budgetMonthNum, 0).getDate();
-  const dailyLimit = budget > 0 ? budget / daysInMonth : 0;
+  // Số nhập ở ô "Ngân sách" là hạn mức/ngày trực tiếp — không chia theo số ngày trong tháng.
+  const dailyLimit = budget > 0 ? budget : 0;
   const dailyChartData = (dailyByCat.length > 0 ? dailyByCat : daily).map((d) => {
     const filteredExpense = dailyByCat.length > 0
       ? Object.entries(d)
@@ -355,11 +354,11 @@ export default function Overview() {
       </header>
 
       <div style={{ padding: "0 32px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>💰 Ngân sách tháng:</span>
+        <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>💰 Hạn mức chi/ngày:</span>
         <input
           type="number"
           min="0"
-          placeholder="Nhập ngân sách..."
+          placeholder="Nhập hạn mức/ngày..."
           value={budget || ""}
           onChange={handleBudgetChange}
           onBlur={flushBudget}
