@@ -105,7 +105,7 @@ Stats endpoints combine both `monthly_fixed_costs` rows and fixed-type `transact
 
 ## Deployment
 
-- **Backend + Bot** → Render (Python). Entry point: `start_all.py` runs `run_api.py` in a loop with auto-restart. Bot starts in webhook mode via FastAPI lifespan (`/api/telegram/webhook` with secret token validation). `ping.py` runs as a Render cron job every 14 minutes to prevent free-tier sleep.
+- **Backend + Bot** → Render (Python), **free plan** — the instance spins down after ~15 min idle (cold start on next request). Entry point: `start_all.py` runs `run_api.py` in a loop with auto-restart. Bot starts in webhook mode via FastAPI lifespan (`/api/telegram/webhook` with secret token validation). Keepalive: an external free pinger (e.g. cron-job.org) hits the root URL every ~10–14 min to prevent spin-down — Render Cron Jobs are no longer free, so `ping.py` is unused dead code (kept for reference only, not invoked by anything).
 - **Dashboard** → Vercel. Config in `vercel.json`, outputs `dashboard/dist/`.
 - Python pinned to 3.11.9 (`runtime.txt`)
 
